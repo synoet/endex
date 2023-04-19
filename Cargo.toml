@@ -1,0 +1,16 @@
+[package]
+name = "endex"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+itertools = "0.10.5"
+ndarray = "0.15.6"
+reqwest = {version="0.11.16", features = ["json"]}
+serde = {version ="1.0.159", features = ["derive"]}
+serde_json = "1.0.95"
+tokenizers = "0.13.3"
+tokio = { version = "1.27.0", features = ["full"] }
+dotenv = "0.15.0"
