@@ -4,21 +4,26 @@ use serde::{Deserialize, Serialize};
 pub struct Document {
     pub text: String,
     pub id: String,
-    pub node_id: usize,
+    pub nodes: Option<Vec<DocumentNode>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentNode {
+    pub text: String,
+    pub id: String,
 }
 
 impl Document {
-    pub fn new(text: String, id: String, node_id: Option<usize>) -> Self {
+    pub fn new(text: String, id: String, chunk_size: usize) -> Self {
         Self {
             text,
             id,
-            node_id: node_id.unwrap_or(0),
+            nodes: None,
         }
     }
 
-    pub fn chunk(&mut self, size: usize) -> Vec<Self> {
-        let mut chunks: Vec<Self> = Vec::new();
-
+    pub fn chunk(&mut self, size: usize) {
+        self.nodes = Some(Vec::new());
         for (index, chunk) in self
             .text
             .split_whitespace()
@@ -26,10 +31,13 @@ impl Document {
             .chunks(size)
             .enumerate()
         {
-            chunks.push(Document::new(chunk.join(" "), self.id.clone(), Some(index)));
+            if let Some(nodes) = &mut self.nodes {
+                nodes.push(DocumentNode {
+                    text: chunk.join(" ").to_string(),
+                    id: format!("{}", index),
+                });
+            }
         }
-
-        chunks
     }
 
     pub fn from_file(path: &str) -> Self {
@@ -38,7 +46,7 @@ impl Document {
         Self {
             text,
             id,
-            node_id: 0,
+            nodes: None,
         }
     }
 }
