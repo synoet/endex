@@ -11,10 +11,11 @@ pub struct Document {
 pub struct DocumentNode {
     pub text: String,
     pub id: String,
+    pub document_id: String,
 }
 
 impl Document {
-    pub fn new(text: String, id: String, chunk_size: usize) -> Self {
+    pub fn new(text: String, id: String) -> Self {
         Self {
             text,
             id,
@@ -35,6 +36,7 @@ impl Document {
                 nodes.push(DocumentNode {
                     text: chunk.join(" ").to_string(),
                     id: format!("{}", index),
+                    document_id: self.id.clone(),
                 });
             }
         }

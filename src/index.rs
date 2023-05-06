@@ -1,7 +1,8 @@
-use crate::document::Document;
-use crate::embeddings::Embedding;
+use crate::document::{Document, DocumentNode};
+use crate::embeddings::{Embedding, EmbeddingResult};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
+use std::collections::HashMap;
 use std::io::{BufReader, BufWriter};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -29,6 +30,7 @@ impl Default for IndexConfig {
 #[derive(Debug)]
 pub struct SourceNode<'a> {
     pub document: &'a Document,
+    pub document_node: &'a DocumentNode,
     pub similarity: f64,
 }
 
@@ -53,28 +55,24 @@ pub struct SearchResult<'a> {
 }
 
 impl VectorIndex {
-    pub async fn new(
-        documents: Vec<&Document>,
-        config: Option<IndexConfig>,
-
-    ) -> Self {
-
+    pub async fn new(documents: Vec<&Document>, config: Option<IndexConfig>) -> Self {
         let config = config.unwrap_or_default();
 
         let verbosity = config.verbose;
 
         let mut vector_index = Self {
-            documents: match config.document_chunk_size {
-                Some(size) => documents
-                    .into_iter()
-                    .map(|document| document.clone().chunk(size))
-                    .flatten()
-                    .collect(),
-                None => documents
-                    .into_iter()
-                    .map(|document| document.clone())
-                    .collect(),
-            },
+            documents: documents
+                .into_iter()
+                .map(|document| {
+                    let mut temp_document = document.clone();
+                    let chunk_size = match config.document_chunk_size {
+                        Some(size) => size,
+                        None => document.text.len(),
+                    };
+                    temp_document.chunk(chunk_size);
+                    temp_document
+                })
+                .collect::<Vec<Document>>(),   
             embeddings: None,
             config,
         };
@@ -84,13 +82,22 @@ impl VectorIndex {
     }
 
     async fn _create_embeddings(&mut self, verbose: bool) {
+        let mut all_embeddings: Vec<Embedding> = Vec::new();
+
         for document in &self.documents {
-            let embedding = Embedding::from_document(document).await.unwrap();
-            match &mut self.embeddings {
-                Some(embeddings) => embeddings.push(embedding),
-                None => self.embeddings = Some(vec![embedding]),
+            let embeddings = Embedding::from_document(document).await.unwrap();
+
+            match embeddings {
+                EmbeddingResult::Multiple(embeddings) => {
+                    all_embeddings.extend(embeddings);
+                }
+                EmbeddingResult::Single(embedding) => {
+                    all_embeddings.push(embedding);
+                }
             }
         }
+
+        self.embeddings = Some(all_embeddings);
 
         if verbose {
             println!("Created embeddings for {} documents", self.documents.len());
@@ -106,38 +113,40 @@ impl VectorIndex {
     }
 
     pub async fn search(&mut self, query: String, config: Option<&SearchConfig>) -> SearchResult {
-        let config = config.unwrap_or(&SearchConfig::default());
+        let _config = config.unwrap_or(&SearchConfig::default());
 
-        let query_embedding =
-            Embedding::from_document(&Document::new(query, String::from("query"), Some(0)))
-                .await
-                .unwrap();
+        let query_embedding = Embedding::from_query(&query).await.unwrap();
 
         match &self.embeddings {
             Some(embeddings) => {
-                let result: Option<&Embedding> = embeddings.iter().max_by(|a, b| {
-                    a.cosine_similarity(&query_embedding)
-                        .partial_cmp(&b.cosine_similarity(&query_embedding))
-                        .unwrap()
-                });
-
-                let source_nodes: Vec<SourceNode> = self
+                let document_map: HashMap<String, &Document> = self
                     .documents
                     .iter()
-                    .filter(|document| {
-                        document.id == result.unwrap().document_id
-                            && document.node_id == result.unwrap().document_node_id
-                    })
-                    .collect::<Vec<&Document>>()
-                    .iter()
-                    .map(|document| SourceNode {
+                    .map(|document| (document.id.clone(), document))
+                    .collect();
+
+                let mut results: Vec<SourceNode> = vec![];
+
+                for embedding in embeddings {
+                    let document = document_map.get(&embedding.document_id).unwrap();
+
+                    let node = document.nodes.as_ref().unwrap().iter().find(|node| {
+                        node.id == embedding.document_node_id
+                    });
+
+                    let similarity = embedding.cosine_similarity(&query_embedding);
+
+                    results.push(SourceNode {
                         document,
-                        similarity: result.unwrap().cosine_similarity(&query_embedding),
-                    })
-                    .collect::<Vec<SourceNode>>();
+                        document_node: node.unwrap(),
+                        similarity,
+                    });
+                }
+
+                results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap());
 
                 SearchResult {
-                    source_nodes: Some(source_nodes),
+                    source_nodes: Some(results),
                 }
             }
             None => SearchResult { source_nodes: None },
