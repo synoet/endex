@@ -1,8 +1,8 @@
 use crate::document::{Document, DocumentNode};
 use crate::embeddings::{Embedding, EmbeddingResult};
 use serde::{Deserialize, Serialize};
-use std::fs::File;
 use std::collections::HashMap;
+use std::fs::File;
 use std::io::{BufReader, BufWriter};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -72,7 +72,7 @@ impl VectorIndex {
                     temp_document.chunk(chunk_size);
                     temp_document
                 })
-                .collect::<Vec<Document>>(),   
+                .collect::<Vec<Document>>(),
             embeddings: None,
             config,
         };
@@ -130,9 +130,12 @@ impl VectorIndex {
                 for embedding in embeddings {
                     let document = document_map.get(&embedding.document_id).unwrap();
 
-                    let node = document.nodes.as_ref().unwrap().iter().find(|node| {
-                        node.id == embedding.document_node_id
-                    });
+                    let node = document
+                        .nodes
+                        .as_ref()
+                        .unwrap()
+                        .iter()
+                        .find(|node| node.id == embedding.document_node_id);
 
                     let similarity = embedding.cosine_similarity(&query_embedding);
 
